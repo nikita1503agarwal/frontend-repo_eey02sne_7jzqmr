@@ -1,71 +1,92 @@
+import { useEffect, useMemo, useState } from 'react'
+import Navbar from './components/Navbar'
+import ProductCard from './components/ProductCard'
+import CartDrawer from './components/CartDrawer'
+
 function App() {
+  const [products, setProducts] = useState([])
+  const [loading, setLoading] = useState(true)
+  const [error, setError] = useState('')
+
+  const [cartOpen, setCartOpen] = useState(false)
+  const [cart, setCart] = useState([])
+  const backend = import.meta.env.VITE_BACKEND_URL || 'http://localhost:8000'
+
+  useEffect(() => {
+    const load = async () => {
+      try {
+        setLoading(true)
+        setError('')
+        // Seed once if empty
+        await fetch(`${backend}/seed`, { method: 'POST' }).catch(() => {})
+        const res = await fetch(`${backend}/products`)
+        if (!res.ok) throw new Error('Failed to load products')
+        const data = await res.json()
+        setProducts(data)
+      } catch (e) {
+        setError(e.message)
+      } finally {
+        setLoading(false)
+      }
+    }
+    load()
+  }, [backend])
+
+  const cartCount = useMemo(() => cart.reduce((sum, i) => sum + i.quantity, 0), [cart])
+
+  const addToCart = (product) => {
+    setCart((prev) => {
+      const existing = prev.find((p) => p.id === product.id)
+      if (existing) {
+        return prev.map((p) => p.id === product.id ? { ...p, quantity: p.quantity + 1 } : p)
+      }
+      return [...prev, { ...product, quantity: 1 }]
+    })
+  }
+
+  const updateQty = (id, qty) => {
+    setCart((prev) => prev.map((p) => p.id === id ? { ...p, quantity: qty } : p))
+  }
+
+  const checkout = async ({ subtotal, tax, total }) => {
+    try {
+      const payload = {
+        items: cart.map(({ id, title, price, quantity, image }) => ({ product_id: id, title, price, quantity })),
+        shipping: {
+          name: 'Guest',
+          email: 'guest@example.com',
+          address: 'N/A',
+          city: 'N/A',
+          country: 'N/A',
+          postal_code: '00000'
+        },
+        subtotal, tax, total
+      }
+      const res = await fetch(`${backend}/orders`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) })
+      if (!res.ok) throw new Error('Checkout failed')
+      const data = await res.json()
+      alert(`Order placed! Total: $${data.total}`)
+      setCart([])
+      setCartOpen(false)
+    } catch (e) {
+      alert(e.message)
+    }
+  }
+
   return (
-    <div className="min-h-screen bg-gradient-to-br from-slate-900 via-slate-800 to-slate-900">
-      {/* Subtle pattern overlay */}
-      <div className="absolute inset-0 bg-[radial-gradient(circle_at_50%_50%,rgba(59,130,246,0.05),transparent_50%)]"></div>
-
-      <div className="relative min-h-screen flex items-center justify-center p-8">
-        <div className="max-w-2xl w-full">
-          {/* Header with Flames icon */}
-          <div className="text-center mb-12">
-            <div className="inline-flex items-center justify-center mb-6">
-              <img
-                src="/flame-icon.svg"
-                alt="Flames"
-                className="w-24 h-24 drop-shadow-[0_0_25px_rgba(59,130,246,0.5)]"
-              />
-            </div>
-
-            <h1 className="text-5xl font-bold text-white mb-4 tracking-tight">
-              Flames Blue
-            </h1>
-
-            <p className="text-xl text-blue-200 mb-6">
-              Build applications through conversation
-            </p>
-          </div>
-
-          {/* Instructions */}
-          <div className="bg-slate-800/50 backdrop-blur-sm border border-blue-500/20 rounded-2xl p-8 shadow-xl mb-6">
-            <div className="flex items-start gap-4 mb-6">
-              <div className="flex-shrink-0 w-8 h-8 bg-blue-500 text-white rounded-lg flex items-center justify-center font-bold">
-                1
-              </div>
-              <div>
-                <h3 className="font-semibold text-white mb-1">Describe your idea</h3>
-                <p className="text-blue-200/80 text-sm">Use the chat panel on the left to tell the AI what you want to build</p>
-              </div>
-            </div>
-
-            <div className="flex items-start gap-4 mb-6">
-              <div className="flex-shrink-0 w-8 h-8 bg-blue-500 text-white rounded-lg flex items-center justify-center font-bold">
-                2
-              </div>
-              <div>
-                <h3 className="font-semibold text-white mb-1">Watch it build</h3>
-                <p className="text-blue-200/80 text-sm">Your app will appear in this preview as the AI generates the code</p>
-              </div>
-            </div>
-
-            <div className="flex items-start gap-4">
-              <div className="flex-shrink-0 w-8 h-8 bg-blue-500 text-white rounded-lg flex items-center justify-center font-bold">
-                3
-              </div>
-              <div>
-                <h3 className="font-semibold text-white mb-1">Refine and iterate</h3>
-                <p className="text-blue-200/80 text-sm">Continue the conversation to add features and make changes</p>
-              </div>
-            </div>
-          </div>
-
-          {/* Footer */}
-          <div className="text-center">
-            <p className="text-sm text-blue-300/60">
-              No coding required • Just describe what you want
-            </p>
-          </div>
+    <div className="min-h-screen bg-gradient-to-b from-slate-50 to-white">
+      <Navbar cartCount={cartCount} onCartClick={() => setCartOpen(true)} />
+      <main className="max-w-6xl mx-auto px-4 py-8">
+        <h1 className="text-3xl font-bold text-slate-900 mb-6">Featured Products</h1>
+        {loading && <p className="text-slate-600">Loading products...</p>}
+        {error && <p className="text-red-600">{error}</p>}
+        <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-6">
+          {products.map((p) => (
+            <ProductCard key={p.id} product={p} onAdd={addToCart} />
+          ))}
         </div>
-      </div>
+      </main>
+      <CartDrawer open={cartOpen} items={cart} onClose={() => setCartOpen(false)} onCheckout={checkout} onUpdateQty={updateQty} />
     </div>
   )
 }
